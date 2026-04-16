@@ -2,201 +2,793 @@ import { useEffect, useState } from "react";
 import {
   FlatList,
   Linking,
-  RefreshControl,
+  Modal,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-  useColorScheme
+  useColorScheme,
+  View
 } from "react-native";
 
 import * as Storage from "./storage";
 
+/* ================= API ================= */
+const API = "http://192.168.1.111:8001";
+
+/* ================= TEMA MEJORADO ================= */
+const THEME = (dark) => ({
+  bg: dark ? "#0b0b10" : "#f4f6fb",
+  card: dark ? "#161622" : "#ffffff",
+  text: dark ? "#ffffff" : "#111111",
+  sub: dark ? "#a9b0c7" : "#555",
+  border: dark ? "#2a2a3a" : "#e6e8ef",
+  accent: "#3b82f6"
+});
+
+/* ================= TIPOS ================= */
+const TIPO = {
+  c: "Clientes",
+  o: "Otros",
+  s: "Spam",
+  e: "Exclientes",
+  p: "Personal"
+};
+
 export default function App() {
+  const dark = useColorScheme() === "dark";
+  const t = THEME(dark);
+
+  const [token, setToken] = useState(null);
+
+  const [user, setUser] = useState("");
+  const [pass, setPass] = useState("");
+
   const [clientes, setClientes] = useState([]);
   const [busqueda, setBusqueda] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
-  const [favoritos, setFavoritos] = useState([]);
   const [filtro, setFiltro] = useState("todos");
 
-  const dark = useColorScheme() === "dark";
+  const [fav, setFav] = useState([]);
 
-  const API_URL = "http://192.168.1.111:8001/clientes";
+  const [editModal, setEditModal] = useState(false);
 
-  // 🔄 cargar clientes
-  const cargarClientes = async () => {
-    try {
-      const res = await fetch(API_URL);
-      const data = await res.json();
-      setClientes(data);
-    } catch (err) {
-      console.log(err);
-    }
-  };
+const [editCodigo, setEditCodigo] = useState("");
+const [editNombre, setEditNombre] = useState("");
+const [editNumero, setEditNumero] = useState("");
+const [editCorreo, setEditCorreo] = useState("");
+const [editTipo, setEditTipo] = useState("c");
+  const [modal, setModal] = useState(false);
+  const [nums, setNums] = useState([]);
+  const [accion, setAccion] = useState("");
+  const [showCreate, setShowCreate] = useState(false);
+const [newNombre, setNewNombre] = useState("");
+const [newNumero, setNewNumero] = useState("");
+const [newCorreo, setNewCorreo] = useState("");
+const [newTipo, setNewTipo] = useState("clientes");
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyyDSyB1Y8XCXFxfgJ9HNvwCe8YymzR-u3KXO_WBvi1B_OhjeYuKgYiAgIRK2mfYuUn/exec";
 
-  // ⭐ cargar favoritos
-  const cargarFavoritos = async () => {
-    const favs = await Storage.getItem("favoritos");
-    if (favs) setFavoritos(JSON.parse(favs));
-  };
-
-  // ⭐ toggle favorito
-  const toggleFavorito = async (codigo) => {
-    let nuevos;
-    if (favoritos.includes(codigo)) {
-      nuevos = favoritos.filter((f) => f !== codigo);
-    } else {
-      nuevos = [...favoritos, codigo];
-    }
-    setFavoritos(nuevos);
-    await Storage.setItem("favoritos", JSON.stringify(nuevos));
-  };
-
+  /* ================= INIT ================= */
   useEffect(() => {
-    cargarClientes();
-    cargarFavoritos();
-
-    const interval = setInterval(() => {
-      cargarClientes();
-    }, 5000);
-
-    return () => clearInterval(interval);
+    init();
   }, []);
 
-  // 🔍 filtro + búsqueda
-  let filtrados = clientes.filter((c) => {
-    if (!c) return false;
+  const init = async () => {
+    const tk = await Storage.getItem("token");
+    const f = await Storage.getItem("fav");
 
-    const coincideBusqueda =
+    if (tk) {
+      setToken(tk);
+      loadClientes(tk);
+    }
+
+    if (f) setFav(JSON.parse(f));
+  };
+
+  /* ================= LOGIN ================= */
+const login = async () => {
+  try {
+    const res = await fetch(API + "/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: user, password: pass })
+    });
+
+    const data = await res.json();
+
+    if (data.token) {
+      await Storage.setItem("token", data.token);
+
+      setToken(data.token);
+
+      // 🔥 FIX BUG: limpiar inputs
+      setUser("");
+      setPass("");
+
+      loadClientes(data.token);
+    } else {
+      alert("Login incorrecto");
+    }
+  } catch (e) {
+    alert("Error login");
+  }
+};
+
+  /* ================= LOGOUT FIX ================= */
+const logout = async () => {
+  try {
+    await Storage.removeItem("token");
+  } catch (e) {
+    console.log(e);
+  }
+
+  // 🔥 RESET COMPLETO DE ESTADO
+  setToken(null);
+
+  setUser("");
+  setPass("");
+  setBusqueda("");
+
+  setClientes([]);
+  setFav([]);
+};
+
+  /* ================= CLIENTES ================= */
+const loadClientes = async (tk) => {
+  try {
+    console.log("TOKEN:", tk);
+
+    const res = await fetch(API + "/clientes", {
+headers: { token: tk }
+});
+
+    console.log("STATUS:", res.status);
+
+    const data = await res.json();
+
+    console.log("CLIENTES API:", data);
+
+    if (Array.isArray(data)) {
+      setClientes(data);
+    } else {
+      setClientes([]);
+    }
+
+  } catch (e) {
+    console.log(e);
+  }
+};
+
+  /* ================= FAVORITOS ================= */
+  const toggleFav = async (id) => {
+    let n = fav.includes(id)
+      ? fav.filter(x => x !== id)
+      : [...fav, id];
+
+    setFav(n);
+    await Storage.setItem("fav", JSON.stringify(n));
+  };
+
+  /* ================= ACCIONES ================= */
+  const openAction = (value, type) => {
+    const list = (value || "")
+      .split(",")
+      .map(x => x.trim())
+      .filter(Boolean);
+
+    if (list.length === 1) {
+      run(list[0], type);
+    } else {
+      setNums(list);
+      setAccion(type);
+      setModal(true);
+    }
+  };
+
+  const run = (n, type) => {
+    if (type === "tel") Linking.openURL(`tel:${n}`);
+    if (type === "wa") Linking.openURL(`https://wa.me/${n}`);
+    if (type === "mail") Linking.openURL(`mailto:${n}`);
+  };
+
+  // 🔥 AÑADE ESTO JUSTO DEBAJO DE openAction / run (no borra nada)
+const crearContacto = async () => {
+  try {
+    const payload = {
+      codigo: Date.now().toString(),
+      tipo: newTipo,
+      nombre: newNombre,
+      numero: newNumero,
+      correo: newCorreo
+    };
+
+    console.log("ENVIANDO:", payload);
+
+await fetch(GOOGLE_SCRIPT_URL, {
+  method: "POST",
+  body: JSON.stringify(payload)
+});
+
+    setShowCreate(false);
+
+    setNewNombre("");
+    setNewNumero("");
+    setNewCorreo("");
+    setNewTipo("c");
+
+  } catch (e) {
+    console.log("ERROR:", e);
+  }
+
+  loadClientes(token);
+
+};
+
+  /* ================= FILTRO ================= */
+  const safeClientes = Array.isArray(clientes) ? clientes : [];
+
+const filtered = safeClientes.filter(c => {
+    const ok =
       (c.nombre || "").toLowerCase().includes(busqueda.toLowerCase()) ||
       (c.numero || "").includes(busqueda) ||
       (c.correo || "").toLowerCase().includes(busqueda.toLowerCase());
 
-    if (!coincideBusqueda) return false;
+    if (!ok) return false;
 
-    if (filtro === "favoritos") return favoritos.includes(c.codigo);
-    if (filtro === "clientes") return c.tipo === "c";
-    if (filtro === "otros") return c.tipo === "o";
-    if (filtro === "spam") return c.tipo === "s";
+    if (filtro === "todos") return true;
+    if (filtro === "fav") return fav.includes(c.codigo);
 
-    return true;
+    return c.tipo === filtro;
   });
 
-  // ⭐ favoritos arriba
-  filtrados.sort((a, b) => {
-    const aFav = favoritos.includes(a.codigo);
-    const bFav = favoritos.includes(b.codigo);
-    if (aFav && !bFav) return -1;
-    if (!aFav && bFav) return 1;
-    return 0;
-  });
+  const openEdit = (item) => {
+  setEditCodigo(item.codigo);
+  setEditNombre(item.nombre);
+  setEditNumero(item.numero);
+  setEditCorreo(item.correo);
+  setEditTipo(item.tipo);
 
-  // 📞 acciones
-  const llamar = (numero) => Linking.openURL(`tel:${numero}`);
-  const email = (correo) =>
-    Linking.openURL(`https://mail.google.com/mail/?view=cm&fs=1&to=${correo}`);
-  const whatsapp = (numero) =>
-    Linking.openURL(`https://wa.me/${numero}`);
+  setEditModal(true);
+};
 
+const guardarEdit = async () => {
+  try {
+    const payload = {
+      accion: "update",
+      codigo: editCodigo,
+      tipo: editTipo,
+      nombre: editNombre,
+      numero: editNumero,
+      correo: editCorreo
+    };
+
+    await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      body: JSON.stringify(payload)
+    });
+
+    setEditModal(false);
+    loadClientes(token);
+
+  } catch (e) {
+    console.log("ERROR EDIT:", e);
+  }
+};
+
+  /* ================= LOGIN SCREEN ================= */
+if (!token) {
   return (
-    <View style={[styles.container, { backgroundColor: dark ? "#000" : "#fff" }]}>
+    <View style={[styles.login, { backgroundColor: t.bg }]}>
 
-      {/* 🔍 BUSCADOR */}
+      <Text style={[styles.title, { color: t.text }]}>Login</Text>
+
       <TextInput
-        style={[
-          styles.input,
-          {
-            backgroundColor: dark ? "#111" : "#fff",
-            color: dark ? "#fff" : "#000",
-            borderColor: dark ? "#333" : "#ccc"
-          }
-        ]}
+        placeholder="Usuario"
+        placeholderTextColor={t.sub}
+        value={user}              // ✅ FIX
+        style={[styles.input, { backgroundColor: t.card, color: t.text }]}
+        onChangeText={setUser}
+      />
+
+      <TextInput
+        placeholder="Contraseña"
+        placeholderTextColor={t.sub}
+        secureTextEntry
+        value={pass}              // ✅ FIX
+        style={[styles.input, { backgroundColor: t.card, color: t.text }]}
+        onChangeText={setPass}
+      />
+
+      <TouchableOpacity
+        style={[styles.btn, { backgroundColor: t.accent }]}
+        onPress={login}
+      >
+        <Text style={{ color: "#fff" }}>Entrar</Text>
+      </TouchableOpacity>
+
+    </View>
+  );
+}
+
+  /* ================= APP ================= */
+  return (
+    <View style={[styles.container, { backgroundColor: t.bg }]}>
+
+      {/* TOP */}
+
+  <View style={{
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginBottom: 10
+}}>
+
+  {/* IZQUIERDA → BOTON + */}
+  <TouchableOpacity style={styles.addBtn} onPress={() => setShowCreate(true)}>
+    <Text style={styles.addText}>＋</Text>
+  </TouchableOpacity>
+
+  {/* DERECHA → LOGOUT */}
+  <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
+    <Text style={styles.logoutText}>Cerrar sesión</Text>
+  </TouchableOpacity>
+
+</View>
+      {/* SEARCH */}
+      <TextInput
         placeholder="Buscar..."
-        placeholderTextColor={dark ? "#aaa" : "#666"}
+        placeholderTextColor={t.sub}
         value={busqueda}
+        style={[styles.search, { backgroundColor: t.card, color: t.text }]}
         onChangeText={setBusqueda}
       />
 
-      {/* 🔥 FILTROS */}
-      <View style={styles.filtros}>
-        {["todos", "favoritos", "clientes", "otros", "spam"].map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[
-              styles.filtroBtn,
-              { backgroundColor: filtro === f ? "#007AFF" : "#ccc" }
-            ]}
-            onPress={() => setFiltro(f)}
-          >
+      {/* FILTERS */}
+      <View style={styles.filters}>
+        {["todos", "fav", "c", "o", "s", "e", "p"].map(f => (
+          <TouchableOpacity key={f} onPress={() => setFiltro(f)}>
             <Text style={{
-              color: filtro === f ? "#fff" : "#000",
-              fontSize: 14
+              color: filtro === f ? t.accent : t.text,
+              fontWeight: filtro === f ? "bold" : "normal"
             }}>
-              {f}
+              {f === "c" ? "Clientes"
+                : f === "o" ? "Otros"
+                  : f === "s" ? "Spam"
+                    : f === "e" ? "Exclientes"
+                      : f === "p" ? "Personal"
+                        : f === "fav" ? "Favoritos"
+                          : "Todos"}
             </Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* 📋 LISTA */}
+      {/* LIST */}
       <FlatList
-        data={filtrados}
-        keyExtractor={(item) => item.codigo}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={cargarClientes} />
-        }
+        data={filtered}
+        keyExtractor={i => i.codigo}
         renderItem={({ item }) => (
-          <View style={[styles.card, { backgroundColor: dark ? "#111" : "#eee" }]}>
+          <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
 
-            <Text style={[styles.nombre, { color: dark ? "#fff" : "#000" }]}>
+            <Text style={[styles.name, { color: t.text }]}>
               {item.nombre}
             </Text>
 
-            <Text style={[styles.texto, { color: dark ? "#ccc" : "#333" }]}>
+            <Text style={[styles.num, { color: t.sub }]}>
               {item.numero}
             </Text>
 
-            <Text style={[styles.texto, { color: dark ? "#ccc" : "#333" }]}>
+            <Text style={[styles.mail, { color: t.sub }]}>
               {item.correo}
             </Text>
 
-            {/* BOTONES */}
-            <View style={styles.actions}>
-              <TouchableOpacity onPress={() => llamar(item.numero)}>
+            <Text style={[styles.type, { color: t.sub }]}>
+              {TIPO[item.tipo] || "Otros"}
+            </Text>
+
+            {/* ICONOS IZQUIERDA */}
+            <View style={styles.icons}>
+
+              <TouchableOpacity onPress={() => openAction(item.numero, "tel")}>
                 <Text style={styles.icon}>📞</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => email(item.correo)}>
-                <Text style={styles.icon}>📧</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => whatsapp(item.numero)}>
+
+              <TouchableOpacity onPress={() => openAction(item.numero, "wa")}>
                 <Text style={styles.icon}>💬</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => toggleFavorito(item.codigo)}>
-                <Text style={[
-                  styles.icon,
-                  { color: favoritos.includes(item.codigo) ? "#FFD700" : dark ? "#fff" : "#000" }
-                ]}>
-                  {favoritos.includes(item.codigo) ? "⭐" : "☆"}
-                </Text>
+
+              <TouchableOpacity onPress={() => run(item.correo, "mail")}>
+                <Text style={styles.icon}>📧</Text>
               </TouchableOpacity>
+
+              <TouchableOpacity onPress={() => openEdit(item)}>
+  <Text style={styles.icon}>⚙️</Text>
+</TouchableOpacity>
+
+              <TouchableOpacity onPress={() => toggleFav(item.codigo)}>
+  <Text
+    style={[
+      styles.icon,
+      {
+        color: fav.includes(item.codigo)
+          ? "#facc15" // amarillo estrella activa
+          : t.text // blanco en dark / negro en light
+      }
+    ]}
+  >
+    {fav.includes(item.codigo) ? "⭐" : "☆"}
+  </Text>
+</TouchableOpacity>
+
             </View>
 
           </View>
         )}
       />
+
+      {/* MODAL */}
+{/* ================= MODAL NUMEROS ================= */}
+<Modal visible={modal} transparent animationType="fade">
+  <View style={styles.modalBg}>
+
+    <View style={[styles.modalBox, { backgroundColor: t.card }]}>
+
+      {/* TITULO */}
+      <Text style={[styles.modalTitle, { color: t.text }]}>
+        Selecciona un número
+      </Text>
+
+      {/* NUMEROS */}
+      {nums.map((n, i) => (
+        <TouchableOpacity
+          key={i}
+          style={[
+            styles.numBtn,
+            { backgroundColor: dark ? "#2a2a3a" : "#f2f2f2" }
+          ]}
+          onPress={() => {
+            run(n, accion);
+            setModal(false);
+          }}
+        >
+          <Text style={{ color: t.text, fontSize: 18 }}>
+            {n}
+          </Text>
+        </TouchableOpacity>
+      ))}
+
+      {/* BOTON CANCELAR */}
+      <TouchableOpacity
+        onPress={() => setModal(false)}
+        style={{ marginTop: 10 }}
+      >
+        <Text style={{ color: "#ff4d4d", textAlign: "center", fontSize: 16 }}>
+          Cancelar
+        </Text>
+      </TouchableOpacity>
+
+    </View>
+  </View>
+</Modal>
+
+
+{/* ================= MODAL CREAR ================= */}
+<Modal visible={showCreate} transparent animationType="fade">
+  <View style={styles.modalBg}>
+
+    <View style={[styles.modalBox, { backgroundColor: t.card }]}>
+
+      <Text style={[styles.modalTitle, { color: t.text }]}>
+        Nuevo contacto
+      </Text>
+
+      <TextInput
+        placeholder="Nombre"
+        placeholderTextColor={t.sub}
+        style={[
+          styles.input,
+          {
+            backgroundColor: dark ? "#2a2a3a" : "#f2f2f2",
+            color: t.text
+          }
+        ]}
+        value={newNombre}
+        onChangeText={setNewNombre}
+      />
+
+      <TextInput
+        placeholder="Número (usa , para varios)"
+        placeholderTextColor={t.sub}
+        keyboardType="numeric"
+        style={[
+          styles.input,
+          {
+            backgroundColor: dark ? "#2a2a3a" : "#f2f2f2",
+            color: t.text
+          }
+        ]}
+        value={newNumero}
+        onChangeText={(text) =>
+          setNewNumero(text.replace(/[^0-9,]/g, ""))
+        }
+      />
+
+      <TextInput
+        placeholder="Correo"
+        placeholderTextColor={t.sub}
+        style={[
+          styles.input,
+          {
+            backgroundColor: dark ? "#2a2a3a" : "#f2f2f2",
+            color: t.text
+          }
+        ]}
+        value={newCorreo}
+        onChangeText={setNewCorreo}
+      />
+
+      {/* TIPOS */}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+        {[
+          { label: "Clientes", val: "c" },
+          { label: "Otros", val: "o" },
+          { label: "Spam", val: "s" },
+          { label: "Exclientes", val: "e" },
+          { label: "Personal", val: "p" }
+        ].map((tpo) => (
+          <TouchableOpacity
+            key={tpo.val}
+            onPress={() => setNewTipo(tpo.val)}
+            style={{
+              backgroundColor: newTipo === tpo.val ? "#3b82f6" : "#555",
+              paddingVertical: 6,
+              paddingHorizontal: 10,
+              borderRadius: 10
+            }}
+          >
+            <Text style={{ color: "#fff" }}>{tpo.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* BOTON CREAR */}
+      <TouchableOpacity
+        style={[styles.btn, { backgroundColor: "#22c55e", marginTop: 15 }]}
+        onPress={crearContacto}
+      >
+        <Text style={{ color: "#fff", fontWeight: "bold" }}>
+          Crear
+        </Text>
+      </TouchableOpacity>
+
+      {/* CANCELAR */}
+      <TouchableOpacity onPress={() => setShowCreate(false)}>
+        <Text style={{ color: "#ff4d4d", textAlign: "center", marginTop: 10 }}>
+          Cancelar
+        </Text>
+      </TouchableOpacity>
+
+    </View>
+  </View>
+</Modal>
+
+<Modal visible={editModal} transparent animationType="fade">
+  <View style={styles.modalBg}>
+    <View style={[styles.modalBox, { backgroundColor: t.card }]}>
+
+      <Text style={[styles.modalTitle, { color: t.text }]}>
+        Editar contacto
+      </Text>
+
+      <TextInput
+        placeholder="Nombre"
+        placeholderTextColor={t.sub}
+        style={[
+          styles.input,
+          {
+            backgroundColor: dark ? "#2a2a3a" : "#f2f2f2",
+            color: t.text
+          }
+        ]}
+        value={editNombre}
+        onChangeText={setEditNombre}
+      />
+
+      <TextInput
+        placeholder="Número"
+        placeholderTextColor={t.sub}
+        keyboardType="numeric"
+        style={[
+          styles.input,
+          {
+            backgroundColor: dark ? "#2a2a3a" : "#f2f2f2",
+            color: t.text
+          }
+        ]}
+        value={editNumero}
+        onChangeText={(text) =>
+          setEditNumero(text.replace(/[^0-9,]/g, ""))
+        }
+      />
+
+      <TextInput
+        placeholder="Correo"
+        placeholderTextColor={t.sub}
+        style={[
+          styles.input,
+          {
+            backgroundColor: dark ? "#2a2a3a" : "#f2f2f2",
+            color: t.text
+          }
+        ]}
+        value={editCorreo}
+        onChangeText={setEditCorreo}
+      />
+
+      {/* TIPOS (igual que crear) */}
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+        {[
+          { label: "Clientes", val: "c" },
+          { label: "Otros", val: "o" },
+          { label: "Spam", val: "s" },
+          { label: "Exclientes", val: "e" },
+          { label: "Personal", val: "p" }
+        ].map((tpo) => (
+          <TouchableOpacity
+            key={tpo.val}
+            onPress={() => setEditTipo(tpo.val)}
+            style={{
+              backgroundColor: editTipo === tpo.val ? "#3b82f6" : "#555",
+              paddingVertical: 6,
+              paddingHorizontal: 10,
+              borderRadius: 10
+            }}
+          >
+            <Text style={{ color: "#fff" }}>{tpo.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* BOTÓN GUARDAR */}
+      <TouchableOpacity
+        style={[styles.btn, { backgroundColor: "#22c55e", marginTop: 15 }]}
+        onPress={guardarEdit}
+      >
+        <Text style={{ color: "#fff", fontWeight: "bold" }}>
+          Guardar cambios
+        </Text>
+      </TouchableOpacity>
+
+      {/* CANCELAR */}
+      <TouchableOpacity onPress={() => setEditModal(false)}>
+        <Text style={{ color: "#ff4d4d", textAlign: "center", marginTop: 10 }}>
+          Cancelar
+        </Text>
+      </TouchableOpacity>
+
+    </View>
+  </View>
+</Modal>
+
     </View>
   );
 }
 
+/* ================= STYLES ================= */
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, marginTop: 40 },
-  input: { borderWidth: 1, padding: 10, marginBottom: 10, borderRadius: 8, fontSize: 18 },
-  filtros: { flexDirection: "row", flexWrap: "wrap", marginBottom: 10 },
-  filtroBtn: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, marginRight: 8, marginBottom: 5 },
-  card: { padding: 15, marginBottom: 10, borderRadius: 10 },
-  nombre: { fontSize: 22, fontWeight: "bold", marginBottom: 6 },
-  texto: { fontSize: 16, marginBottom: 4 },
-  actions: { flexDirection: "row", marginTop: 10, gap: 15 },
-  icon: { fontSize: 22 }
+
+  container: { flex: 1, padding: 15, paddingTop: 20 },
+
+  login: { flex: 1, justifyContent: "center", padding: 20 },
+
+  title: { fontSize: 28, marginBottom: 20, fontWeight: "bold" },
+
+  input: {
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 10
+  },
+
+  btn: {
+    padding: 14,
+    borderRadius: 10,
+    alignItems: "center"
+  },
+
+  top: { marginBottom: 10 },
+
+  search: {
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 10
+  },
+
+  filters: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 10
+  },
+
+  card: {
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1
+  },
+
+  name: { fontSize: 32, fontWeight: "bold" },
+  num: { fontSize: 20 },
+  mail: { fontSize: 20 },
+  type: { fontSize: 16 },
+
+  icons: {
+    flexDirection: "row",
+    justifyContent: "flex-start",
+    marginTop: 10,
+    gap: 12
+  },
+
+  icon: { fontSize: 32 },
+
+  modalBg: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#0008"
+  },
+
+  modalBox: {
+    width: "70%",
+    borderRadius: 10,
+    padding: 10
+  },
+
+  modalTitle: {
+  fontSize: 20,
+  fontWeight: "bold",
+  marginBottom: 15,
+  textAlign: "center"
+},
+
+numBtn: {
+  padding: 14,
+  borderRadius: 10,
+  marginBottom: 10,
+  alignItems: "center"
+},
+
+cancelBtn: {
+  marginTop: 10,
+  padding: 10,
+  alignItems: "center"
+},
+
+logoutBtn: {
+  alignSelf: "flex-start",
+  paddingVertical: 8,
+  paddingHorizontal: 14,
+  borderRadius: 10,
+  marginBottom: 10,
+  backgroundColor: "#c90404"
+},
+
+logoutText: {
+  color: "#fff",
+  fontWeight: "600",
+  fontSize: 14
+},
+
+addBtn: {
+  backgroundColor: "#22c55e",
+  paddingHorizontal: 14,
+  paddingVertical: 6,
+  borderRadius: 10
+},
+
+addText: {
+  color: "#fff",
+  fontSize: 20,
+  fontWeight: "bold"
+}
 });
