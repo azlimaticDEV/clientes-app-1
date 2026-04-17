@@ -72,17 +72,37 @@ const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyyDSyB1Y8XCX
     init();
   }, []);
 
-  const init = async () => {
+useEffect(() => {
+  if (!token) return;
+
+  const interval = setInterval(() => {
+    loadClientes(token);
+  }, 3000);
+
+  return () => clearInterval(interval);
+}, [token]);
+
+const init = async () => {
+  try {
     const tk = await Storage.getItem("token");
-    const f = await Storage.getItem("fav");
 
-    if (tk) {
-      setToken(tk);
-      loadClientes(tk);
-    }
+    if (!tk) return;
 
-    if (f) setFav(JSON.parse(f));
-  };
+    setToken(tk);
+
+const favRes = await fetch(API + "/favoritos", {
+  headers: { token: tk }
+});
+
+const favData = await favRes.json();
+setFav(Array.isArray(favData) ? favData : []);
+
+    loadClientes(tk);
+
+  } catch (e) {
+    console.log("INIT ERROR:", e);
+  }
+};
 
   /* ================= LOGIN ================= */
 const login = async () => {
@@ -95,24 +115,31 @@ const login = async () => {
 
     const data = await res.json();
 
-    if (data.token) {
-      await Storage.setItem("token", data.token);
+    if (!data.token) return alert("Login incorrecto");
 
-      setToken(data.token);
+    await Storage.setItem("token", data.token);
 
-      // 🔥 FIX BUG: limpiar inputs
-      setUser("");
-      setPass("");
+    setToken(data.token);
 
-      loadClientes(data.token);
-    } else {
-      alert("Login incorrecto");
-    }
+    setUser("");
+    setPass("");
+
+    // 🔥 cargar TODO bien
+    const [clientesRes, favRes] = await Promise.all([
+      fetch(API + "/clientes", { headers: { token: data.token } }),
+      fetch(API + "/favoritos", { headers: { token: data.token } })
+    ]);
+
+    const clientesData = await clientesRes.json();
+    const favData = await favRes.json();
+
+    setClientes(Array.isArray(clientesData) ? clientesData : []);
+    setFav(Array.isArray(favData) ? favData : []);
+
   } catch (e) {
-    alert("Error login");
+    console.log(e);
   }
 };
-
   /* ================= LOGOUT FIX ================= */
 const logout = async () => {
   try {
@@ -134,23 +161,26 @@ const logout = async () => {
 
   /* ================= CLIENTES ================= */
 const loadClientes = async (tk) => {
+  if (!tk) {
+    console.log("❌ SIN TOKEN");
+    return;
+  }
+
   try {
-    console.log("TOKEN:", tk);
-
     const res = await fetch(API + "/clientes", {
-headers: { token: tk }
-});
+      headers: { token: tk }
+    });
 
-    console.log("STATUS:", res.status);
+    if (res.status === 401) {
+      console.log("❌ TOKEN INVALIDO");
+      logout(); // 🔥 CLAVE
+      return;
+    }
 
     const data = await res.json();
 
-    console.log("CLIENTES API:", data);
-
     if (Array.isArray(data)) {
       setClientes(data);
-    } else {
-      setClientes([]);
     }
 
   } catch (e) {
@@ -159,14 +189,27 @@ headers: { token: tk }
 };
 
   /* ================= FAVORITOS ================= */
-  const toggleFav = async (id) => {
-    let n = fav.includes(id)
-      ? fav.filter(x => x !== id)
-      : [...fav, id];
+const toggleFav = async (id) => {
+  const n = fav.includes(id)
+    ? fav.filter(x => x !== id)
+    : [...fav, id];
 
-    setFav(n);
-    await Storage.setItem("fav", JSON.stringify(n));
-  };
+  setFav(n);
+
+  try {
+    await fetch(API + "/favoritos", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        token
+      },
+      body: JSON.stringify({ favoritos: n })
+    });
+
+  } catch (e) {
+    console.log("ERROR FAVORITOS:", e);
+  }
+};
 
   /* ================= ACCIONES ================= */
   const openAction = (value, type) => {
@@ -226,7 +269,8 @@ await fetch(GOOGLE_SCRIPT_URL, {
   /* ================= FILTRO ================= */
   const safeClientes = Array.isArray(clientes) ? clientes : [];
 
-const filtered = safeClientes.filter(c => {
+const filtered = safeClientes
+  .filter(c => {
     const ok =
       (c.nombre || "").toLowerCase().includes(busqueda.toLowerCase()) ||
       (c.numero || "").includes(busqueda) ||
@@ -238,6 +282,16 @@ const filtered = safeClientes.filter(c => {
     if (filtro === "fav") return fav.includes(c.codigo);
 
     return c.tipo === filtro;
+  })
+  .sort((a, b) => {
+    const aFav = fav.includes(a.codigo) ? 1 : 0;
+    const bFav = fav.includes(b.codigo) ? 1 : 0;
+
+    // ⭐ favoritos primero
+    if (aFav !== bFav) return bFav - aFav;
+
+    // 🔤 ordenar por nombre
+    return (a.nombre || "").localeCompare(b.nombre || "");
   });
 
   const openEdit = (item) => {
