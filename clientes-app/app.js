@@ -68,10 +68,43 @@ const [newTipo, setNewTipo] = useState("clientes");
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyyDSyB1Y8XCXFxfgJ9HNvwCe8YymzR-u3KXO_WBvi1B_OhjeYuKgYiAgIRK2mfYuUn/exec";
 
   /* ================= INIT ================= */
-  useEffect(() => {
-    init();
-  }, []);
+useEffect(() => {
+  init();
+}, []);
 
+// 🔥 ESTE CONTROLA TODO (clientes + favoritos)
+useEffect(() => {
+  if (!token) return;
+
+  const cargarTodo = async () => {
+    try {
+      // FAVORITOS
+      const favRes = await fetch(API + "/favoritos", {
+        headers: { token }
+      });
+
+      if (favRes.status === 401) {
+        console.log("TOKEN INVALIDO (FAV)");
+        logout();
+        return;
+      }
+
+      const favData = await favRes.json();
+      setFav(Array.isArray(favData) ? favData : []);
+
+      // CLIENTES
+      await loadClientes(token);
+
+    } catch (e) {
+      console.log("ERROR LOAD:", e);
+    }
+  };
+
+  cargarTodo();
+
+}, [token]);
+
+// 🔁 REFRESH AUTOMATICO
 useEffect(() => {
   if (!token) return;
 
@@ -82,22 +115,16 @@ useEffect(() => {
   return () => clearInterval(interval);
 }, [token]);
 
+// 🔥 INIT LIMPIO (SIN FETCH)
 const init = async () => {
   try {
     const tk = await Storage.getItem("token");
 
+    console.log("TOKEN STORAGE:", tk);
+
     if (!tk) return;
 
     setToken(tk);
-
-const favRes = await fetch(API + "/favoritos", {
-  headers: { token: tk }
-});
-
-const favData = await favRes.json();
-setFav(Array.isArray(favData) ? favData : []);
-
-    loadClientes(tk);
 
   } catch (e) {
     console.log("INIT ERROR:", e);
@@ -161,10 +188,7 @@ const logout = async () => {
 
   /* ================= CLIENTES ================= */
 const loadClientes = async (tk) => {
-  if (!tk) {
-    console.log("❌ SIN TOKEN");
-    return;
-  }
+  if (!tk) return; // 🔥 CLAVE
 
   try {
     const res = await fetch(API + "/clientes", {
@@ -172,16 +196,14 @@ const loadClientes = async (tk) => {
     });
 
     if (res.status === 401) {
-      console.log("❌ TOKEN INVALIDO");
-      logout(); // 🔥 CLAVE
+      console.log("TOKEN INVALIDO");
+      logout();
       return;
     }
 
     const data = await res.json();
 
-    if (Array.isArray(data)) {
-      setClientes(data);
-    }
+    setClientes(Array.isArray(data) ? data : []);
 
   } catch (e) {
     console.log(e);
