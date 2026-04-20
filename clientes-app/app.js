@@ -52,6 +52,9 @@ export default function App() {
 
   const [editModal, setEditModal] = useState(false);
 
+const [notas, setNotas] = useState({});
+const [notaEdit, setNotaEdit] = useState("");
+const [notaOpen, setNotaOpen] = useState(null);
 const [editCodigo, setEditCodigo] = useState("");
 const [editNombre, setEditNombre] = useState("");
 const [editNumero, setEditNumero] = useState("");
@@ -78,6 +81,14 @@ useEffect(() => {
 
   const cargarTodo = async () => {
     try {
+
+      const notasRes = await fetch(API + "/notas", {
+  headers: { token }
+});
+
+const notasData = await notasRes.json();
+setNotas(notasData || {});
+
       // FAVORITOS
       const favRes = await fetch(API + "/favoritos", {
         headers: { token }
@@ -386,159 +397,238 @@ if (!token) {
   );
 }
 
-  /* ================= APP ================= */
-  return (
-    <View style={[styles.container, { backgroundColor: t.bg }]}>
+/* ================= APP ================= */
+return (
+  <View style={[styles.container, { backgroundColor: t.bg }]}>
 
-      {/* TOP */}
+    {/* TOP */}
+    <View style={{
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 10
+    }}>
+      <TouchableOpacity style={styles.addBtn} onPress={() => setShowCreate(true)}>
+        <Text style={styles.addText}>＋</Text>
+      </TouchableOpacity>
 
-  <View style={{
-  flexDirection: "row",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginBottom: 10
-}}>
+      <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
+        <Text style={styles.logoutText}>Cerrar sesión</Text>
+      </TouchableOpacity>
+    </View>
 
-  {/* IZQUIERDA → BOTON + */}
-  <TouchableOpacity style={styles.addBtn} onPress={() => setShowCreate(true)}>
-    <Text style={styles.addText}>＋</Text>
-  </TouchableOpacity>
+    {/* SEARCH */}
+    <TextInput
+      placeholder="Buscar..."
+      placeholderTextColor={t.sub}
+      value={busqueda}
+      style={[styles.search, { backgroundColor: t.card, color: t.text }]}
+      onChangeText={setBusqueda}
+    />
 
-  {/* DERECHA → LOGOUT */}
-  <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
-    <Text style={styles.logoutText}>Cerrar sesión</Text>
-  </TouchableOpacity>
+    {/* FILTERS */}
+    <View style={styles.filters}>
+      {["todos", "fav", "c", "o", "s", "e", "p"].map(f => (
+        <TouchableOpacity key={f} onPress={() => setFiltro(f)}>
+          <Text style={{
+            color: filtro === f ? t.accent : t.text,
+            fontWeight: filtro === f ? "bold" : "normal"
+          }}>
+            {f === "c" ? "Clientes"
+              : f === "o" ? "Otros"
+              : f === "s" ? "Spam"
+              : f === "e" ? "Exclientes"
+              : f === "p" ? "Personal"
+              : f === "fav" ? "Favoritos"
+              : "Todos"}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
 
-</View>
-      {/* SEARCH */}
-      <TextInput
-        placeholder="Buscar..."
-        placeholderTextColor={t.sub}
-        value={busqueda}
-        style={[styles.search, { backgroundColor: t.card, color: t.text }]}
-        onChangeText={setBusqueda}
-      />
+    {/* LISTA */}
+    <FlatList
+      data={filtered}
+      keyExtractor={i => i.codigo}
+      renderItem={({ item }) => (
+        <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
 
-      {/* FILTERS */}
-      <View style={styles.filters}>
-        {["todos", "fav", "c", "o", "s", "e", "p"].map(f => (
-          <TouchableOpacity key={f} onPress={() => setFiltro(f)}>
-            <Text style={{
-              color: filtro === f ? t.accent : t.text,
-              fontWeight: filtro === f ? "bold" : "normal"
-            }}>
-              {f === "c" ? "Clientes"
-                : f === "o" ? "Otros"
-                  : f === "s" ? "Spam"
-                    : f === "e" ? "Exclientes"
-                      : f === "p" ? "Personal"
-                        : f === "fav" ? "Favoritos"
-                          : "Todos"}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+          {/* INFO */}
+          <Text style={[styles.name, { color: t.text }]}>
+            {item.nombre}
+          </Text>
 
-      {/* LIST */}
-      <FlatList
-        data={filtered}
-        keyExtractor={i => i.codigo}
-        renderItem={({ item }) => (
-          <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
+          <Text style={[styles.num, { color: t.sub }]}>
+            {item.numero}
+          </Text>
 
-            <Text style={[styles.name, { color: t.text }]}>
-              {item.nombre}
-            </Text>
+          <Text style={[styles.mail, { color: t.sub }]}>
+            {item.correo}
+          </Text>
 
-            <Text style={[styles.num, { color: t.sub }]}>
-              {item.numero}
-            </Text>
+          <Text style={[styles.type, { color: t.sub }]}>
+            {TIPO[item.tipo] || "Otros"}
+          </Text>
 
-            <Text style={[styles.mail, { color: t.sub }]}>
-              {item.correo}
-            </Text>
+          {/* ICONOS */}
+          <View style={styles.icons}>
 
-            <Text style={[styles.type, { color: t.sub }]}>
-              {TIPO[item.tipo] || "Otros"}
-            </Text>
+            <TouchableOpacity onPress={() => openAction(item.numero, "tel")}>
+              <Text style={styles.icon}>📞</Text>
+            </TouchableOpacity>
 
-            {/* ICONOS IZQUIERDA */}
-            <View style={styles.icons}>
+            <TouchableOpacity onPress={() => openAction(item.numero, "wa")}>
+              <Text style={styles.icon}>💬</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity onPress={() => openAction(item.numero, "tel")}>
-                <Text style={styles.icon}>📞</Text>
-              </TouchableOpacity>
+            <TouchableOpacity onPress={() => run(item.correo, "mail")}>
+              <Text style={styles.icon}>📧</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity onPress={() => openAction(item.numero, "wa")}>
-                <Text style={styles.icon}>💬</Text>
-              </TouchableOpacity>
+            <TouchableOpacity onPress={() => openEdit(item)}>
+              <Text style={styles.icon}>⚙️</Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity onPress={() => run(item.correo, "mail")}>
-                <Text style={styles.icon}>📧</Text>
-              </TouchableOpacity>
+            <TouchableOpacity onPress={() => toggleFav(item.codigo)}>
+              <Text style={[styles.icon, {
+                color: fav.includes(item.codigo) ? "#facc15" : t.text
+              }]}>
+                {fav.includes(item.codigo) ? "⭐" : "☆"}
+              </Text>
+            </TouchableOpacity>
 
-              <TouchableOpacity onPress={() => openEdit(item)}>
-  <Text style={styles.icon}>⚙️</Text>
-</TouchableOpacity>
-
-              <TouchableOpacity onPress={() => toggleFav(item.codigo)}>
-  <Text
-    style={[
-      styles.icon,
-      {
-        color: fav.includes(item.codigo)
-          ? "#facc15" // amarillo estrella activa
-          : t.text // blanco en dark / negro en light
-      }
-    ]}
-  >
-    {fav.includes(item.codigo) ? "⭐" : "☆"}
-  </Text>
-</TouchableOpacity>
-
-            </View>
+            {/* 📝 ABRIR NOTA */}
+            <TouchableOpacity
+              onPress={() => {
+                if (notaOpen === item.codigo) {
+                  setNotaOpen(null);
+                } else {
+                  setNotaOpen(item.codigo);
+                  setNotaEdit(notas[item.codigo] || "");
+                }
+              }}
+            >
+              <Text style={styles.icon}>📝</Text>
+            </TouchableOpacity>
 
           </View>
-        )}
-      />
 
-      {/* MODAL */}
-{/* ================= MODAL NUMEROS ================= */}
+          {/* 🟡 EDITOR DE NOTA DENTRO DE LA CARD */}
+          {notaOpen === item.codigo && (
+            <View style={{
+              marginTop: 10,
+              padding: 10,
+              borderRadius: 10,
+              backgroundColor: dark ? "#1f2937" : "#f3f4f6"
+            }}>
+
+              <TextInput
+                value={notaEdit}
+                onChangeText={setNotaEdit}
+                multiline
+                placeholder="Escribe una nota..."
+                placeholderTextColor={t.sub}
+                style={{
+                  height: 100,
+                  color: t.text,
+                  textAlignVertical: "top"
+                }}
+              />
+
+              <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 10 }}>
+
+                <TouchableOpacity
+                  onPress={async () => {
+                    await fetch(API + "/notas", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        token
+                      },
+                      body: JSON.stringify({
+                        codigo: item.codigo,
+                        nota: notaEdit
+                      })
+                    });
+
+                    setNotas(prev => ({
+                      ...prev,
+                      [item.codigo]: notaEdit
+                    }));
+
+                    setNotaOpen(null);
+                  }}
+                >
+                  <Text style={{ color: "#22c55e", fontWeight: "bold" }}>
+                    Guardar
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={() => setNotaOpen(null)}>
+                  <Text style={{ color: "#ff4d4d", fontWeight: "bold" }}>
+                    Cancelar
+                  </Text>
+                </TouchableOpacity>
+
+              </View>
+
+            </View>
+          )}
+
+          {/* NOTA YA GUARDADA */}
+          {notas[item.codigo] && notaOpen !== item.codigo && (
+            <View style={{
+              marginTop: 10,
+              padding: 8,
+              borderRadius: 8,
+              backgroundColor: dark ? "#111827" : "#eef2ff"
+            }}>
+              <Text style={{ color: t.text }}>
+                {notas[item.codigo]}
+              </Text>
+            </View>
+          )}
+
+        </View>
+      )}
+    />
+
+    {/* ================= MODAL NUMEROS ================= */}
 <Modal visible={modal} transparent animationType="fade">
   <View style={styles.modalBg}>
-
     <View style={[styles.modalBox, { backgroundColor: t.card }]}>
 
-      {/* TITULO */}
       <Text style={[styles.modalTitle, { color: t.text }]}>
         Selecciona un número
       </Text>
 
-      {/* NUMEROS */}
       {nums.map((n, i) => (
         <TouchableOpacity
           key={i}
           style={[
             styles.numBtn,
-            { backgroundColor: dark ? "#2a2a3a" : "#f2f2f2" }
+            {
+              backgroundColor: dark ? "#2a2a3a" : "#f2f2f2",
+              borderWidth: 1,
+              borderColor: t.border
+            }
           ]}
           onPress={() => {
             run(n, accion);
             setModal(false);
           }}
         >
-          <Text style={{ color: t.text, fontSize: 18 }}>
+          <Text style={{ color: t.text, fontSize: 16 }}>
             {n}
           </Text>
         </TouchableOpacity>
       ))}
 
-      {/* BOTON CANCELAR */}
       <TouchableOpacity
         onPress={() => setModal(false)}
-        style={{ marginTop: 10 }}
+        style={[styles.cancelBtn, { marginTop: 5 }]}
       >
-        <Text style={{ color: "#ff4d4d", textAlign: "center", fontSize: 16 }}>
+        <Text style={{ color: "#ff4d4d", fontWeight: "600" }}>
           Cancelar
         </Text>
       </TouchableOpacity>
@@ -547,8 +637,7 @@ if (!token) {
   </View>
 </Modal>
 
-
-{/* ================= MODAL CREAR ================= */}
+    {/* ================= MODAL CREAR ================= */}
 <Modal visible={showCreate} transparent animationType="fade">
   <View style={styles.modalBg}>
 
@@ -648,6 +737,7 @@ if (!token) {
   </View>
 </Modal>
 
+    {/* ================= MODAL EDIT ================= */}
 <Modal visible={editModal} transparent animationType="fade">
   <View style={styles.modalBg}>
     <View style={[styles.modalBox, { backgroundColor: t.card }]}>
@@ -746,8 +836,74 @@ if (!token) {
   </View>
 </Modal>
 
+    {/* ================= MODAL NOTA ================= */}
+<Modal visible={notaOpen !== null} transparent animationType="fade">
+  <View style={styles.modalBg}>
+    <View style={[styles.modalBox, { backgroundColor: t.card }]}>
+
+      <Text style={[styles.modalTitle, { color: t.text }]}>
+        Nota
+      </Text>
+
+      <TextInput
+        value={notaEdit}
+        onChangeText={setNotaEdit}
+        multiline
+        placeholder="Escribe una nota..."
+        placeholderTextColor={t.sub}
+        style={[
+          styles.input,
+          {
+            height: 120,
+            textAlignVertical: "top",
+            backgroundColor: dark ? "#2a2a3a" : "#f2f2f2",
+            color: t.text,
+            borderWidth: 1,
+            borderColor: t.border
+          }
+        ]}
+      />
+
+      <TouchableOpacity
+        style={[styles.btn, { backgroundColor: "#3b82f6" }]}
+        onPress={async () => {
+          await fetch(API + "/notas", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              token
+            },
+            body: JSON.stringify({
+              codigo: notaOpen,
+              nota: notaEdit
+            })
+          });
+
+          setNotas(prev => ({
+            ...prev,
+            [notaOpen]: notaEdit
+          }));
+
+          setNotaOpen(null);
+        }}
+      >
+        <Text style={{ color: "#fff", fontWeight: "bold" }}>
+          Guardar
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={() => setNotaOpen(null)}>
+        <Text style={{ color: "#ff4d4d", textAlign: "center", marginTop: 10 }}>
+          Cancelar
+        </Text>
+      </TouchableOpacity>
+
     </View>
-  );
+  </View>
+</Modal>
+
+  </View>
+);
 }
 
 /* ================= STYLES ================= */
