@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   FlatList,
+  Image,
   Linking,
   Modal,
   StyleSheet,
@@ -454,9 +455,23 @@ return (
         <View style={[styles.card, { backgroundColor: t.card, borderColor: t.border }]}>
 
           {/* INFO */}
-          <Text style={[styles.name, { color: t.text }]}>
-            {item.nombre}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+  
+  {/* CODIGO */}
+  <Text style={{
+    color: t.sub,
+    fontSize: 32,
+    opacity: 0.6
+  }}>
+    {item.codigo}º
+  </Text>
+
+  {/* NOMBRE */}
+  <Text style={[styles.name, { color: t.text }]}>
+    {item.nombre}
+  </Text>
+
+</View>
 
           <Text style={[styles.num, { color: t.sub }]}>
             {item.numero}
@@ -478,7 +493,13 @@ return (
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => openAction(item.numero, "wa")}>
-              <Text style={styles.icon}>💬</Text>
+              <Image
+              source={require("./assets/images/whatsapp.png")}
+              style={{ width: 32, height: 32 ,flexDirection: "row",
+    justifyContent: "flex-start",
+    marginTop: 8,
+    gap: 12}}
+              />
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => run(item.correo, "mail")}>
