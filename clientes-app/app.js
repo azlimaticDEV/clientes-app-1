@@ -69,6 +69,7 @@ const [newNombre, setNewNombre] = useState("");
 const [newNumero, setNewNumero] = useState("");
 const [newCorreo, setNewCorreo] = useState("");
 const [newTipo, setNewTipo] = useState("clientes");
+const [newDescripcion, setNewDescripcion] = useState("");
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyyDSyB1Y8XCXFxfgJ9HNvwCe8YymzR-u3KXO_WBvi1B_OhjeYuKgYiAgIRK2mfYuUn/exec";
 
   /* ================= INIT ================= */
@@ -122,7 +123,7 @@ useEffect(() => {
 
   const interval = setInterval(() => {
     loadClientes(token);
-  }, 3000);
+  }, 1000);
 
   return () => clearInterval(interval);
 }, [token]);
@@ -275,7 +276,8 @@ const crearContacto = async () => {
       tipo: newTipo,
       nombre: newNombre,
       numero: newNumero,
-      correo: newCorreo
+      correo: newCorreo,
+      descripcion: newDescripcion
     };
 
     console.log("ENVIANDO:", payload);
@@ -480,6 +482,15 @@ return (
           <Text style={[styles.mail, { color: t.sub }]}>
             {item.correo}
           </Text>
+
+          <Text style={{ marginTop: 5 }}>
+  <Text style={{ fontWeight: "bold", color: t.text }}>
+    info:{" "}
+  </Text>
+  <Text style={{ color: t.sub }}>
+    {item.descripcion || ""}
+  </Text>
+</Text>
 
           <Text style={[styles.type, { color: t.sub }]}>
             {TIPO[item.tipo] || "Otros"}
