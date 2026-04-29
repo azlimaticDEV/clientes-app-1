@@ -483,14 +483,16 @@ return (
             {item.correo}
           </Text>
 
-          <Text style={{ marginTop: 5 }}>
-  <Text style={{ fontWeight: "bold", color: t.text }}>
-    info:{" "}
+          {item.descripcion ? (
+  <Text style={{ marginTop: 5 }}>
+    <Text style={{ fontWeight: "bold", color: t.text }}>
+      info:{" "}
+    </Text>
+    <Text style={{ color: t.sub }}>
+      {item.descripcion}
+    </Text>
   </Text>
-  <Text style={{ color: t.sub }}>
-    {item.descripcion || ""}
-  </Text>
-</Text>
+) : null}
 
           <Text style={[styles.type, { color: t.sub }]}>
             {TIPO[item.tipo] || "Otros"}
