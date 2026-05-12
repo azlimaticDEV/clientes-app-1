@@ -71,6 +71,9 @@ const [newCorreo, setNewCorreo] = useState("");
 const [newTipo, setNewTipo] = useState("clientes");
 const [newDescripcion, setNewDescripcion] = useState("");
 const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyyDSyB1Y8XCXFxfgJ9HNvwCe8YymzR-u3KXO_WBvi1B_OhjeYuKgYiAgIRK2mfYuUn/exec";
+const [newCC, setNewCC] = useState("");
+const [editCC, setEditCC] = useState("");
+const [editDescripcion, setEditDescripcion] = useState("");
 
   /* ================= INIT ================= */
 useEffect(() => {
@@ -133,9 +136,16 @@ const init = async () => {
   try {
     const tk = await Storage.getItem("token");
 
-    console.log("TOKEN STORAGE:", tk);
-
     if (!tk) return;
+
+    const res = await fetch(API + "/clientes", {
+      headers: { token: tk }
+    });
+
+    if (res.status === 401) {
+      await Storage.removeItem("token");
+      return;
+    }
 
     setToken(tk);
 
@@ -272,13 +282,15 @@ const toggleFav = async (id) => {
 const crearContacto = async () => {
   try {
     const payload = {
-      codigo: Date.now().toString(),
-      tipo: newTipo,
-      nombre: newNombre,
-      numero: newNumero,
-      correo: newCorreo,
-      descripcion: newDescripcion
-    };
+  accion: "create",
+  codigo: Date.now().toString(),
+  tipo: newTipo,
+  nombre: newNombre,
+  numero: newNumero,
+  correo: newCorreo,
+  descripcion: newDescripcion,
+  cc: newTipo === "c" ? newCC : ""
+};
 
     console.log("ENVIANDO:", payload);
 
@@ -286,13 +298,23 @@ await fetch(GOOGLE_SCRIPT_URL, {
   method: "POST",
   body: JSON.stringify(payload)
 });
+const recentUntil = Date.now() + 60000;
 
+setClientes(prev => [
+  {
+    ...payload,
+    recentUntil
+  },
+  ...prev
+]);
     setShowCreate(false);
 
     setNewNombre("");
-    setNewNumero("");
-    setNewCorreo("");
-    setNewTipo("c");
+setNewNumero("");
+setNewCorreo("");
+setNewDescripcion("");
+setNewCC("");
+setNewTipo("c");
 
   } catch (e) {
     console.log("ERROR:", e);
@@ -320,16 +342,28 @@ const filtered = safeClientes
     return c.tipo === filtro;
   })
   .sort((a, b) => {
-    const aFav = fav.includes(a.codigo) ? 1 : 0;
-    const bFav = fav.includes(b.codigo) ? 1 : 0;
 
-    // ⭐ favoritos primero
-    if (aFav !== bFav) return bFav - aFav;
+  // ⭐ FAVORITOS PRIMERO
+  const aFav = fav.includes(a.codigo) ? 1 : 0;
+  const bFav = fav.includes(b.codigo) ? 1 : 0;
 
-    // 🔤 ordenar por nombre
-    return (a.nombre || "").localeCompare(b.nombre || "");
-  });
+  if (aFav !== bFav) {
+    return bFav - aFav;
+  }
 
+  // 🔥 RECIENTES ARRIBA (1 MIN)
+  const now = Date.now();
+
+  const aRecent = a.recentUntil && a.recentUntil > now ? 1 : 0;
+  const bRecent = b.recentUntil && b.recentUntil > now ? 1 : 0;
+
+  if (aRecent !== bRecent) {
+    return bRecent - aRecent;
+  }
+
+  // 🔤 ORDEN NORMAL
+  return (a.nombre || "").localeCompare(b.nombre || "");
+})
   const openEdit = (item) => {
   setEditCodigo(item.codigo);
   setEditNombre(item.nombre);
@@ -337,28 +371,54 @@ const filtered = safeClientes
   setEditCorreo(item.correo);
   setEditTipo(item.tipo);
 
+  setEditCC(item.cc || "");
+  setEditDescripcion(item.descripcion || "");
+
   setEditModal(true);
 };
 
 const guardarEdit = async () => {
   try {
-    const payload = {
-      accion: "update",
-      codigo: editCodigo,
-      tipo: editTipo,
-      nombre: editNombre,
-      numero: editNumero,
-      correo: editCorreo
-    };
 
-    await fetch(GOOGLE_SCRIPT_URL, {
+    const payload = {
+  accion: "update",
+  codigo: editCodigo,
+  tipo: editTipo,
+  nombre: editNombre,
+  numero: editNumero,
+  correo: editCorreo,
+  descripcion: editDescripcion,
+  cc: editTipo === "c" ? editCC : ""
+};
+
+    await fetch(API + "/editar", {
       method: "POST",
-      mode: "no-cors",
+      headers: {
+        "Content-Type": "application/json",
+        token
+      },
       body: JSON.stringify(payload)
     });
 
-    setEditModal(false);
-    loadClientes(token);
+    setClientes(prev =>
+  prev.map(c =>
+    c.codigo === editCodigo
+      ? {
+          ...c,
+          nombre: editNombre,
+          numero: editNumero,
+          correo: editCorreo,
+          tipo: editTipo,
+          descripcion: editDescripcion,
+          cc: editTipo === "c" ? editCC : ""
+        }
+      : c
+  )
+);
+
+setEditModal(false);
+
+loadClientes(token);
 
   } catch (e) {
     console.log("ERROR EDIT:", e);
@@ -465,7 +525,9 @@ return (
     fontSize: 32,
     opacity: 0.6
   }}>
-    {item.codigo}º
+    {item.tipo === "c"
+  ? `${item.cc || "-"}`
+  : `${item.codigo}º`}
   </Text>
 
   {/* NOMBRE */}
@@ -727,6 +789,40 @@ return (
       />
 
       {/* TIPOS */}
+      {newTipo === "c" && (
+  <TextInput
+    placeholder="C.C"
+    placeholderTextColor={t.sub}
+    keyboardType="numeric"
+    style={[
+      styles.input,
+      {
+        backgroundColor: dark ? "#2a2a3a" : "#f2f2f2",
+        color: t.text
+      }
+    ]}
+    value={newCC}
+    onChangeText={(text) =>
+      setNewCC(text.replace(/[^0-9]/g, ""))
+    }
+  />
+)}
+
+<TextInput
+  placeholder="Descripción"
+  placeholderTextColor={t.sub}
+  multiline
+  style={[
+    styles.input,
+    {
+      backgroundColor: dark ? "#2a2a3a" : "#f2f2f2",
+      color: t.text,
+      minHeight: 80
+    }
+  ]}
+  value={newDescripcion}
+onChangeText={setNewDescripcion}
+/>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
         {[
           { label: "Clientes", val: "c" },
@@ -737,7 +833,13 @@ return (
         ].map((tpo) => (
           <TouchableOpacity
             key={tpo.val}
-            onPress={() => setNewTipo(tpo.val)}
+            onPress={() => {
+  setNewTipo(tpo.val);
+
+  if (tpo.val !== "c") {
+    setNewCC("");
+  }
+}}
             style={{
               backgroundColor: newTipo === tpo.val ? "#3b82f6" : "#555",
               paddingVertical: 6,
@@ -826,6 +928,40 @@ return (
       />
 
       {/* TIPOS (igual que crear) */}
+      {editTipo === "c" && (
+  <TextInput
+    placeholder="C.C"
+    placeholderTextColor={t.sub}
+    keyboardType="numeric"
+    style={[
+      styles.input,
+      {
+        backgroundColor: dark ? "#2a2a3a" : "#f2f2f2",
+        color: t.text
+      }
+    ]}
+    value={editCC}
+    onChangeText={(text) =>
+      setEditCC(text.replace(/[^0-9]/g, ""))
+    }
+  />
+)}
+
+<TextInput
+  placeholder="Descripción"
+  placeholderTextColor={t.sub}
+  multiline
+  style={[
+    styles.input,
+    {
+      backgroundColor: dark ? "#2a2a3a" : "#f2f2f2",
+      color: t.text,
+      minHeight: 80
+    }
+  ]}
+  value={editDescripcion}
+onChangeText={setEditDescripcion}
+/>
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
         {[
           { label: "Clientes", val: "c" },
@@ -836,7 +972,13 @@ return (
         ].map((tpo) => (
           <TouchableOpacity
             key={tpo.val}
-            onPress={() => setEditTipo(tpo.val)}
+            onPress={() => {
+  setEditTipo(tpo.val);
+
+  if (tpo.val !== "c") {
+    setEditCC("");
+  }
+}}
             style={{
               backgroundColor: editTipo === tpo.val ? "#3b82f6" : "#555",
               paddingVertical: 6,
