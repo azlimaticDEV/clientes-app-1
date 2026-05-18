@@ -294,8 +294,12 @@ const crearContacto = async () => {
 
     console.log("ENVIANDO:", payload);
 
-await fetch(GOOGLE_SCRIPT_URL, {
+await fetch(API + "/crear", {
   method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    token
+  },
   body: JSON.stringify(payload)
 });
 const recentUntil = Date.now() + 60000;
