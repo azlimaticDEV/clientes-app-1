@@ -108,9 +108,6 @@ setNotas(notasData || {});
       const favData = await favRes.json();
       setFav(Array.isArray(favData) ? favData : []);
 
-      // CLIENTES
-      await loadClientes(token);
-
     } catch (e) {
       console.log("ERROR LOAD:", e);
     }
@@ -133,24 +130,43 @@ useEffect(() => {
 
 // 🔥 INIT LIMPIO (SIN FETCH)
 const init = async () => {
+
   try {
+
     const tk = await Storage.getItem("token");
 
     if (!tk) return;
 
     const res = await fetch(API + "/clientes", {
-      headers: { token: tk }
+      headers: {
+        token: tk
+      }
     });
 
+    // 🔥 TOKEN INVALIDO
     if (res.status === 401) {
+
       await Storage.removeItem("token");
+
+      setToken(null);
+
       return;
     }
+
+    const data = await res.json();
+
+    setClientes(
+      Array.isArray(data)
+        ? data
+        : []
+    );
 
     setToken(tk);
 
   } catch (e) {
+
     console.log("INIT ERROR:", e);
+
   }
 };
 
@@ -211,25 +227,60 @@ const logout = async () => {
 
   /* ================= CLIENTES ================= */
 const loadClientes = async (tk) => {
-  if (!tk) return; // 🔥 CLAVE
+
+  if (!tk) return;
 
   try {
+
     const res = await fetch(API + "/clientes", {
-      headers: { token: tk }
+      headers: {
+        token: tk
+      }
     });
 
     if (res.status === 401) {
+
       console.log("TOKEN INVALIDO");
-      logout();
+
+      await Storage.removeItem("token");
+
+      setToken(null);
+
+      setClientes([]);
+
       return;
     }
 
     const data = await res.json();
 
-    setClientes(Array.isArray(data) ? data : []);
+    if (!Array.isArray(data)) return;
+
+    setClientes(prev => {
+
+      // 🔥 mantener recentUntil anterior
+      const mapaAnterior = {};
+
+      prev.forEach(c => {
+        mapaAnterior[c.codigo] = c;
+      });
+
+      return data.map(c => {
+
+        const old = mapaAnterior[c.codigo];
+
+        return {
+          ...c,
+
+          // 🔥 conservar recentUntil
+          recentUntil: old?.recentUntil || 0
+        };
+      });
+    });
 
   } catch (e) {
-    console.log(e);
+
+    console.log("LOAD CLIENTES ERROR:", e);
+
   }
 };
 
@@ -280,56 +331,65 @@ const toggleFav = async (id) => {
 
   // 🔥 AÑADE ESTO JUSTO DEBAJO DE openAction / run (no borra nada)
 const crearContacto = async () => {
+
   try {
+
     const payload = {
-  accion: "create",
-  codigo: Date.now().toString(),
-  tipo: newTipo,
-  nombre: newNombre,
-  numero: newNumero,
-  correo: newCorreo,
-  descripcion: newDescripcion,
-  cc: newTipo === "c" ? newCC : ""
-};
+      accion: "create",
+      tipo: newTipo,
+      nombre: newNombre,
+      numero: newNumero,
+      correo: newCorreo,
+      descripcion: newDescripcion,
+      cc: newTipo === "c"
+        ? newCC
+        : ""
+    };
 
-    console.log("ENVIANDO:", payload);
+    await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
 
-await fetch(API + "/crear", {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    token
-  },
-  body: JSON.stringify(payload)
-});
-const recentUntil = Date.now() + 60000;
+    const recentUntil = Date.now() + 60000;
 
-setClientes(prev => [
-  {
-    ...payload,
-    recentUntil
-  },
-  ...prev
-]);
+    setClientes(prev => [
+      {
+        ...payload,
+        codigo: "tmp_" + Date.now(),
+        recentUntil
+      },
+      ...prev
+    ]);
+
     setShowCreate(false);
 
     setNewNombre("");
-setNewNumero("");
-setNewCorreo("");
-setNewDescripcion("");
-setNewCC("");
-setNewTipo("c");
+    setNewNumero("");
+    setNewCorreo("");
+    setNewDescripcion("");
+    setNewCC("");
+    setNewTipo("c");
+
+    // 🔥 recarga real
+    setTimeout(() => {
+      loadClientes(token);
+    }, 1500);
 
   } catch (e) {
+
     console.log("ERROR:", e);
+
   }
-
-  loadClientes(token);
-
 };
 
   /* ================= FILTRO ================= */
-  const safeClientes = Array.isArray(clientes) ? clientes : [];
+const safeClientes = Array.isArray(clientes) ? clientes : [];
+
+const now = Date.now();
 
 const filtered = safeClientes
   .filter(c => {
@@ -340,60 +400,69 @@ const filtered = safeClientes
 
     if (!ok) return false;
 
-    if (filtro === "todos") return true;
     if (filtro === "fav") return fav.includes(c.codigo);
+    if (filtro !== "todos") return c.tipo === filtro;
 
-    return c.tipo === filtro;
+    return true;
   })
   .sort((a, b) => {
 
-  // ⭐ FAVORITOS PRIMERO
-  const aFav = fav.includes(a.codigo) ? 1 : 0;
-  const bFav = fav.includes(b.codigo) ? 1 : 0;
-
-  if (aFav !== bFav) {
-    return bFav - aFav;
-  }
-
-  // 🔥 RECIENTES ARRIBA (1 MIN)
   const now = Date.now();
 
-  const aRecent = a.recentUntil && a.recentUntil > now ? 1 : 0;
-  const bRecent = b.recentUntil && b.recentUntil > now ? 1 : 0;
+  // ⭐ FAVORITOS
+  const aFav = fav.includes(a.codigo);
+  const bFav = fav.includes(b.codigo);
 
-  if (aRecent !== bRecent) {
-    return bRecent - aRecent;
-  }
+  if (aFav && !bFav) return -1;
+  if (!aFav && bFav) return 1;
 
-  // 🔤 ORDEN NORMAL
-  return (a.nombre || "").localeCompare(b.nombre || "");
-})
-  const openEdit = (item) => {
-  setEditCodigo(item.codigo);
-  setEditNombre(item.nombre);
-  setEditNumero(item.numero);
-  setEditCorreo(item.correo);
-  setEditTipo(item.tipo);
+  // 🔥 RECIENTES
+  const aRecent = (a.recentUntil || 0) > now;
+  const bRecent = (b.recentUntil || 0) > now;
+
+  if (aRecent && !bRecent) return -1;
+  if (!aRecent && bRecent) return 1;
+
+  // 🔤 NORMAL
+  return (a.nombre || "")
+    .localeCompare(b.nombre || "");
+});
+
+const openEdit = (item) => {
+
+  setEditCodigo(item.codigo || "");
+
+  setEditNombre(item.nombre || "");
+
+  setEditNumero(item.numero || "");
+
+  setEditCorreo(item.correo || "");
+
+  setEditTipo(item.tipo || "o");
 
   setEditCC(item.cc || "");
+
   setEditDescripcion(item.descripcion || "");
 
   setEditModal(true);
 };
 
 const guardarEdit = async () => {
+
   try {
 
     const payload = {
-  accion: "update",
-  codigo: editCodigo,
-  tipo: editTipo,
-  nombre: editNombre,
-  numero: editNumero,
-  correo: editCorreo,
-  descripcion: editDescripcion,
-  cc: editTipo === "c" ? editCC : ""
-};
+      accion: "update",
+      codigo: editCodigo,
+      tipo: editTipo,
+      nombre: editNombre,
+      numero: editNumero,
+      correo: editCorreo,
+      descripcion: editDescripcion,
+      cc: editTipo === "c"
+        ? editCC
+        : ""
+    };
 
     await fetch(API + "/editar", {
       method: "POST",
@@ -404,28 +473,31 @@ const guardarEdit = async () => {
       body: JSON.stringify(payload)
     });
 
+    const recentUntil = Date.now() + 60000;
+
     setClientes(prev =>
-  prev.map(c =>
-    c.codigo === editCodigo
-      ? {
-          ...c,
-          nombre: editNombre,
-          numero: editNumero,
-          correo: editCorreo,
-          tipo: editTipo,
-          descripcion: editDescripcion,
-          cc: editTipo === "c" ? editCC : ""
-        }
-      : c
-  )
-);
+      prev.map(c =>
+        c.codigo === editCodigo
+          ? {
+              ...c,
+              nombre: editNombre,
+              numero: editNumero,
+              correo: editCorreo,
+              tipo: editTipo,
+              descripcion: editDescripcion,
+              cc: editCC,
+              recentUntil
+            }
+          : c
+      )
+    );
 
-setEditModal(false);
-
-loadClientes(token);
+    setEditModal(false);
 
   } catch (e) {
+
     console.log("ERROR EDIT:", e);
+
   }
 };
 
@@ -530,7 +602,7 @@ return (
     opacity: 0.6
   }}>
     {item.tipo === "c"
-  ? `${item.cc || "-"}`
+  ? `${item.codigo}º | ${item.cc || "-"}`
   : `${item.codigo}º`}
   </Text>
 
@@ -541,9 +613,22 @@ return (
 
 </View>
 
-          <Text style={[styles.num, { color: t.sub }]}>
-            {item.numero}
-          </Text>
+<View style={{ marginTop: 5 }}>
+  {(item.numero || "")
+    .split(",")
+    .map((n, i) => (
+      <TouchableOpacity
+        key={i}
+        onPress={() => run(n.trim(), "tel")}
+      >
+        <Text
+          style={[styles.num, { color: t.sub }]}
+        >
+          {n.trim()}
+        </Text>
+      </TouchableOpacity>
+    ))}
+</View>
 
           <Text style={[styles.mail, { color: t.sub }]}>
             {item.correo}
@@ -964,7 +1049,7 @@ onChangeText={setNewDescripcion}
     }
   ]}
   value={editDescripcion}
-onChangeText={setEditDescripcion}
+  onChangeText={setEditDescripcion}
 />
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
         {[
@@ -1022,7 +1107,7 @@ onChangeText={setEditDescripcion}
     <View style={[styles.modalBox, { backgroundColor: t.card }]}>
 
       <Text style={[styles.modalTitle, { color: t.text }]}>
-        Nota
+        Nota personal
       </Text>
 
       <TextInput
