@@ -4,6 +4,7 @@ import {
   Image,
   Linking,
   Modal,
+  Platform,
   StyleSheet,
   Text,
   TextInput,
@@ -155,11 +156,24 @@ const init = async () => {
 
     const data = await res.json();
 
-    setClientes(
-      Array.isArray(data)
-        ? data
-        : []
+    setClientes(prev => {
+
+  const nuevos = Array.isArray(data)
+    ? data
+    : [];
+
+  return nuevos.map(nuevo => {
+
+    const viejo = prev.find(
+      x => x.codigo === nuevo.codigo
     );
+
+    return {
+      ...nuevo,
+      recentUntil: viejo?.recentUntil || null
+    };
+  });
+});
 
     setToken(tk);
 
@@ -346,27 +360,39 @@ const crearContacto = async () => {
         : ""
     };
 
-    await fetch(GOOGLE_SCRIPT_URL, {
+    const res = await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
       body: JSON.stringify(payload)
     });
 
+    const data = await res.json();
+
+    console.log("CREATE:", data);
+
+    // 🔥 TIEMPO DE PRIORIDAD
     const recentUntil = Date.now() + 60000;
 
+    // 🔥 INSERTA INMEDIATAMENTE ARRIBA
+    const nuevoCliente = {
+      codigo: String(data.codigo || Date.now()),
+      tipo: payload.tipo,
+      nombre: payload.nombre,
+      numero: payload.numero,
+      correo: payload.correo,
+      descripcion: payload.descripcion,
+      cc: payload.cc,
+      recentUntil
+    };
+
     setClientes(prev => [
-      {
-        ...payload,
-        codigo: "tmp_" + Date.now(),
-        recentUntil
-      },
+      nuevoCliente,
       ...prev
     ]);
 
+    // 🔥 CIERRA MODAL
     setShowCreate(false);
 
+    // 🔥 LIMPIA INPUTS
     setNewNombre("");
     setNewNumero("");
     setNewCorreo("");
@@ -374,14 +400,14 @@ const crearContacto = async () => {
     setNewCC("");
     setNewTipo("c");
 
-    // 🔥 recarga real
+    // 🔥 REFRESH DESPUES DE 1 SEG
     setTimeout(() => {
       loadClientes(token);
-    }, 1500);
+    }, 1000);
 
   } catch (e) {
 
-    console.log("ERROR:", e);
+    console.log("ERROR CREATE:", e);
 
   }
 };
@@ -405,25 +431,37 @@ const filtered = safeClientes
 
     return true;
   })
-  .sort((a, b) => {
+.sort((a, b) => {
 
   const now = Date.now();
 
-  // ⭐ FAVORITOS
+  // ⭐ FAVORITOS SIEMPRE ARRIBA
   const aFav = fav.includes(a.codigo);
   const bFav = fav.includes(b.codigo);
 
   if (aFav && !bFav) return -1;
   if (!aFav && bFav) return 1;
 
-  // 🔥 RECIENTES
-  const aRecent = (a.recentUntil || 0) > now;
-  const bRecent = (b.recentUntil || 0) > now;
+  // 🔥 RECIENTES (60 SEG)
+  const aRecent =
+    a.recentUntil &&
+    a.recentUntil > now;
 
+  const bRecent =
+    b.recentUntil &&
+    b.recentUntil > now;
+
+  // 🔥 LOS RECIENTES VAN ARRIBA
   if (aRecent && !bRecent) return -1;
   if (!aRecent && bRecent) return 1;
 
-  // 🔤 NORMAL
+  // 🔥 ENTRE RECIENTES:
+  // EL MÁS NUEVO ARRIBA
+  if (aRecent && bRecent) {
+    return b.recentUntil - a.recentUntil;
+  }
+
+  // 📄 RESTO ORDEN NORMAL
   return (a.nombre || "")
     .localeCompare(b.nombre || "");
 });
@@ -596,15 +634,48 @@ return (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
   
   {/* CODIGO */}
+<View
+  style={{
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flexWrap: "wrap"
+  }}
+>
+
+  {/* CODIGO */}
   <Text style={{
     color: t.sub,
     fontSize: 32,
-    opacity: 0.6
+    opacity: 0.7,
+    fontWeight: "bold"
   }}>
-    {item.tipo === "c"
-  ? `${item.codigo}º | ${item.cc || "-"}`
-  : `${item.codigo}º`}
+    {item.codigo}º
   </Text>
+
+  {/* C.C */}
+{item.tipo === "c" && (
+  <View
+    {...(
+      Platform.OS === "web"
+        ? { title: "Código cliente" }
+        : {}
+    )}
+  >
+    <Text
+      style={{
+        color: t.sub,
+        fontSize: 28,
+        opacity: 0.9,
+        fontWeight: "bold"
+      }}
+    >
+      {"| C.C: " + item.cc || "-"}
+    </Text>
+  </View>
+)}
+
+</View>
 
   {/* NOMBRE */}
   <Text style={[styles.name, { color: t.text }]}>
@@ -622,17 +693,23 @@ return (
         onPress={() => run(n.trim(), "tel")}
       >
         <Text
-          style={[styles.num, { color: t.sub }]}
-        >
-          {n.trim()}
-        </Text>
+  style={[styles.num, { color: t.sub }]}
+>
+  <Text style={{ fontWeight: "bold", color: t.text }}>
+    num:
+  </Text>{" "}
+  {n.trim()}
+</Text>
       </TouchableOpacity>
     ))}
 </View>
 
           <Text style={[styles.mail, { color: t.sub }]}>
-            {item.correo}
-          </Text>
+  <Text style={{ fontWeight: "bold", color: t.text }}>
+    mail:
+  </Text>{" "}
+  {item.correo}
+</Text>
 
           {item.descripcion ? (
   <Text style={{ marginTop: 5 }}>
